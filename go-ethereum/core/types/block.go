@@ -71,9 +71,11 @@ type Header struct {
 	ParentHash  common.Hash    `json:"parentHash"       gencodec:"required"`
 	UncleHash   common.Hash    `json:"sha3Uncles"       gencodec:"required"`
 	Coinbase    common.Address `json:"miner"            gencodec:"required"`
+	// Merkle根节点的哈希值
 	Root        common.Hash    `json:"stateRoot"        gencodec:"required"`
 	TxHash      common.Hash    `json:"transactionsRoot" gencodec:"required"`
 	ReceiptHash common.Hash    `json:"receiptsRoot"     gencodec:"required"`
+	// 布隆过滤器，快速判断一个log对象是否在一组已知的log集合中
 	Bloom       Bloom          `json:"logsBloom"        gencodec:"required"`
 	Difficulty  *big.Int       `json:"difficulty"       gencodec:"required"`
 	Number      *big.Int       `json:"number"           gencodec:"required"`
@@ -81,6 +83,8 @@ type Header struct {
 	GasUsed     *big.Int       `json:"gasUsed"          gencodec:"required"`
 	Time        *big.Int       `json:"timestamp"        gencodec:"required"`
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
+	// 以太坊共识算法ethash与比特币共识pow所不同的一个关键变量
+	// MixDigest是在挖矿过程中计算出来的，它的作用就是作为矿工在进行消耗内存进行挖矿的证明
 	MixDigest   common.Hash    `json:"mixHash"          gencodec:"required"`
 	Nonce       BlockNonce     `json:"nonce"            gencodec:"required"`
 }
@@ -98,6 +102,7 @@ type headerMarshaling struct {
 
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
+// 生成区块头的哈希
 func (h *Header) Hash() common.Hash {
 	return rlpHash(h)
 }
@@ -121,6 +126,7 @@ func (h *Header) HashNoNonce() common.Hash {
 	})
 }
 
+// 区块头的RLP hash值，rlp是一种编码规则
 func rlpHash(x interface{}) (h common.Hash) {
 	hw := sha3.NewKeccak256()
 	rlp.Encode(hw, x)
@@ -130,23 +136,30 @@ func rlpHash(x interface{}) (h common.Hash) {
 
 // Body is a simple (mutable, non-safe) data container for storing and moving
 // a block's data contents (transactions and uncles) together.
+// 存储以太坊区块链的交易信息
 type Body struct {
 	Transactions []*Transaction
+	// uncle设计的目的就是为了抵消以太坊网络中计算能力强的节点破坏去中心化的原则
 	Uncles       []*Header
 }
 
 // Block represents an entire block in the Ethereum blockchain.
+// 区块结构
 type Block struct {
 	header       *Header
 	uncles       []*Header
 	transactions Transactions
 
 	// caches
+	// 哈希与size的缓存
+	// atomic:原子操作
 	hash atomic.Value
+	// Block的hash缓存上一次Head计算出的哈希值，避免不必要的计算
 	size atomic.Value
 
 	// Td is used by package core to store the total difficulty
 	// of the chain up to and including the block.
+	// 挖矿的总难度
 	td *big.Int
 
 	// These fields are used by package eth to track
@@ -191,6 +204,7 @@ type storageblock struct {
 // The values of TxHash, UncleHash, ReceiptHash and Bloom in header
 // are ignored and set to values derived from the given txs, uncles
 // and receipts.
+// 新建区块
 func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt) *Block {
 	b := &Block{header: CopyHeader(header), td: new(big.Int)}
 
@@ -377,11 +391,12 @@ func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
 
 // Hash returns the keccak256 hash of b's header.
 // The hash is computed on the first call and cached thereafter.
+// 以太坊区块唯一标识生成函数
 func (b *Block) Hash() common.Hash {
 	if hash := b.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
-	v := b.header.Hash()
+	v := b.header.Hash() // 调用Head成员的hash
 	b.hash.Store(v)
 	return v
 }

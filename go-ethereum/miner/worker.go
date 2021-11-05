@@ -89,20 +89,24 @@ type Result struct {
 // worker is the main object which takes care of applying messages to the new state
 type worker struct {
 	config *params.ChainConfig
-	engine consensus.Engine
+	engine consensus.Engine // 共识引擎
 
 	mu sync.Mutex
 
 	// update loop
+	// worker用mux向外面发布通知，表示自己已经挖到新的区块
 	mux          *event.TypeMux
+	// 从后台接收tx的channel
 	txCh         chan core.TxPreEvent
+	// 从后台接收订阅事件的channel
 	txSub        event.Subscription
+	// 从后台接收block的channel
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 	chainSideCh  chan core.ChainSideEvent
 	chainSideSub event.Subscription
 	wg           sync.WaitGroup
-
+	// 从共识引擎中接收挖矿的结果
 	agents map[Agent]struct{}
 	recv   chan *Result
 
@@ -127,6 +131,7 @@ type worker struct {
 	atWork int32
 }
 
+// 创建一个新的worker
 func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase common.Address, eth Backend, mux *event.TypeMux) *worker {
 	worker := &worker{
 		config:         config,
@@ -150,9 +155,11 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase com
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
+	// 等待上面几个channel接收的数据进行更新处理
 	go worker.update()
-
+	// 等待agent挖出新的区块
 	go worker.wait()
+	// 提交
 	worker.commitNewWork()
 
 	return worker

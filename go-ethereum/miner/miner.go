@@ -35,6 +35,7 @@ import (
 )
 
 // Backend wraps all methods required for mining.
+// 挖矿所用到的一些方法
 type Backend interface {
 	AccountManager() *accounts.Manager
 	BlockChain() *core.BlockChain
@@ -43,29 +44,38 @@ type Backend interface {
 }
 
 // Miner creates blocks and searches for proof-of-work values.
+// 挖矿的主结构
 type Miner struct {
 	mux *event.TypeMux
 
+	// 处理器
 	worker *worker
 
+	// 矿工地址
 	coinbase common.Address
 	mining   int32
 	eth      Backend
+	// 共识引擎
 	engine   consensus.Engine
-
+	// 是否能够开始挖矿
 	canStart    int32 // can start indicates whether we can start the mining operation
+	// 是否需要先同步
 	shouldStart int32 // should start indicates whether we should start after sync
 }
 
+// 新建挖矿对象
 func New(eth Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine) *Miner {
 	miner := &Miner{
 		eth:      eth,
 		mux:      mux,
 		engine:   engine,
+		// 创建一个新的处理器
 		worker:   newWorker(config, engine, common.Address{}, eth, mux),
 		canStart: 1,
 	}
+	// 创建引擎注册给worker
 	miner.Register(NewCpuAgent(eth.BlockChain(), engine))
+	// 另起协程，等待通知
 	go miner.update()
 
 	return miner
@@ -76,11 +86,12 @@ func New(eth Backend, config *params.ChainConfig, mux *event.TypeMux, engine con
 // the loop is exited. This to prevent a major security vuln where external parties can DOS you with blocks
 // and halt your mining operation for as long as the DOS continues.
 func (self *Miner) update() {
+	// 订阅downloader事件
 	events := self.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
 out:
 	for ev := range events.Chan() {
 		switch ev.Data.(type) {
-		case downloader.StartEvent:
+		case downloader.StartEvent: // 开始挖矿
 			atomic.StoreInt32(&self.canStart, 0)
 			if self.Mining() {
 				self.Stop()

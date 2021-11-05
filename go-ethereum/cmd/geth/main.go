@@ -263,7 +263,7 @@ func startNode(ctx *cli.Context, stack *node.Node) {
 		// Open any wallets already attached
 		for _, wallet := range stack.AccountManager().Wallets() {
 			if err := wallet.Open(""); err != nil {
-				log.Warn("Failed to open wallet", "url", wallet.URL(), "err", err)
+				log.Warn("Failed to open wallet", "url", wallet .URL(), "err", err)
 			}
 		}
 		// Listen for wallet event till termination
