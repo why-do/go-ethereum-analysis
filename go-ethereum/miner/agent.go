@@ -25,20 +25,26 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+// 共识引擎
 type CpuAgent struct {
 	mu sync.Mutex
 
+	// 接收work所下发的任务
 	workCh        chan *Work
+	// 接收停止信号
 	stop          chan struct{}
 	quitCurrentOp chan struct{}
+	// 反馈任务情况，挖出新的block
 	returnCh      chan<- *Result
-
+	// 访问本地节点的blockchain数据接口，获取各种信息
 	chain  consensus.ChainReader
+	// 共识引擎
 	engine consensus.Engine
 
 	isMining int32 // isMining indicates whether the agent is currently mining
 }
 
+// 创建一个新的CpuAgent对象
 func NewCpuAgent(chain consensus.ChainReader, engine consensus.Engine) *CpuAgent {
 	miner := &CpuAgent{
 		chain:  chain,
@@ -68,10 +74,12 @@ done:
 	}
 }
 
+// 启动agent工作线程
 func (self *CpuAgent) Start() {
 	if !atomic.CompareAndSwapInt32(&self.isMining, 0, 1) {
 		return // agent already started
 	}
+	// 监听work和stop信道（Listen）
 	go self.update()
 }
 
@@ -87,7 +95,7 @@ out:
 			self.quitCurrentOp = make(chan struct{})
 			go self.mine(work, self.quitCurrentOp)
 			self.mu.Unlock()
-		case <-self.stop:
+		case <-self.stop:	//接收到停止信号
 			self.mu.Lock()
 			if self.quitCurrentOp != nil {
 				close(self.quitCurrentOp)
@@ -99,6 +107,7 @@ out:
 	}
 }
 
+// 进行挖矿，共识中最核心的函数之一
 func (self *CpuAgent) mine(work *Work, stop <-chan struct{}) {
 	if result, err := self.engine.Seal(self.chain, work.Block, stop); result != nil {
 		log.Info("Successfully sealed new block", "number", result.Number(), "hash", result.Hash())
@@ -107,6 +116,7 @@ func (self *CpuAgent) mine(work *Work, stop <-chan struct{}) {
 		if err != nil {
 			log.Warn("Block sealing failed", "err", err)
 		}
+		// 如果区块挖掘失败，返回一个空的结果
 		self.returnCh <- nil
 	}
 }

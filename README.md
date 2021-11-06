@@ -267,3 +267,23 @@ func NewBlockChain(chainDb ethdb.Database, config *params.ChainConfig, engine co
 
 8.在以太坊中，会有一个以特定算法生成的大小1GB左右的数据集合，矿工节点在挖矿时需要把这1GB的数据全部加载到内存中去
 
+
+
+共识
+
+概念：区块链中的各个节点对下一个区块的内容形成一致的认识
+
+源码：
+
+​		测试网络采用Clique
+
+​		公网采用ethash
+
+ethash解析：
+
+
+
+Remaining problem：
+
+go：select、sync.WaitGroup（Add，Done，Wait）
+eth -> consensus -> ethash -> sealer 72

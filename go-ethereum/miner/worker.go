@@ -393,6 +393,7 @@ func (self *worker) makeCurrent(parent *types.Block, header *types.Header) error
 	return nil
 }
 
+// 区块挖掘过程
 func (self *worker) commitNewWork() {
 	self.mu.Lock()
 	defer self.mu.Unlock()
@@ -402,6 +403,7 @@ func (self *worker) commitNewWork() {
 	defer self.currentMu.Unlock()
 
 	tstart := time.Now()
+	// 获取主链上的最新区块
 	parent := self.chain.CurrentBlock()
 
 	tstamp := tstart.Unix()
@@ -416,6 +418,7 @@ func (self *worker) commitNewWork() {
 	}
 
 	num := parent.Number()
+	// 区块头的定义与赋值
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
@@ -428,6 +431,7 @@ func (self *worker) commitNewWork() {
 	if atomic.LoadInt32(&self.mining) == 1 {
 		header.Coinbase = self.coinbase
 	}
+	// 计算block的难度值
 	if err := self.engine.Prepare(self.chain, header); err != nil {
 		log.Error("Failed to prepare header for mining", "err", err)
 		return
@@ -461,7 +465,10 @@ func (self *worker) commitNewWork() {
 		log.Error("Failed to fetch pending transactions", "err", err)
 		return
 	}
+	// 根据gasPrice和随机数Nonce值生成新的交易，交易打包先后顺序的实现
+	// 矿工一般选择gasPrice更高的交易优先执行，对应发送者来说为了让自己的交易更快被处理，可以设置更高的gasPrice
 	txs := types.NewTransactionsByPriceAndNonce(self.current.signer, pending)
+	// 提交，执行交易
 	work.commitTransactions(self.mux, txs, self.chain, self.coinbase)
 
 	// compute uncles for the new block.
@@ -487,6 +494,7 @@ func (self *worker) commitNewWork() {
 		delete(self.possibleUncles, hash)
 	}
 	// Create the new block to seal with the consensus engine
+	// 调用共识引擎Finalize接口函数，创建一个新的区块
 	if work.Block, err = self.engine.Finalize(self.chain, header, work.state, work.txs, uncles, work.receipts); err != nil {
 		log.Error("Failed to finalize block for sealing", "err", err)
 		return
@@ -496,6 +504,7 @@ func (self *worker) commitNewWork() {
 		log.Info("Commit new mining work", "number", work.Block.Number(), "txs", work.tcount, "uncles", len(uncles), "elapsed", common.PrettyDuration(time.Since(tstart)))
 		self.unconfirmed.Shift(work.Block.NumberU64() - 1)
 	}
+	// 发送工作任务给agent，让agent开始挖矿
 	self.push(work)
 }
 
