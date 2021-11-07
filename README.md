@@ -283,7 +283,9 @@ ethash解析：
 
 
 
-Remaining problem：
+僵尸工厂
 
-go：select、sync.WaitGroup（Add，Done，Wait）
-eth -> consensus -> ethash -> sealer 72
+https://cryptozombies.io/
+
+僵尸工厂概述
+

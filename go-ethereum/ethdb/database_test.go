@@ -37,13 +37,16 @@ func newTestLDB() (*ethdb.LDBDatabase, func()) {
 	if err != nil {
 		panic("failed to create test database: " + err.Error())
 	}
-
+	// 返回一个对象以及关闭操作
 	return db, func() {
+		// 关闭数据库
+		// 移除目录
 		db.Close()
 		os.RemoveAll(dirname)
 	}
 }
 
+// 测试数据源
 var test_values = []string{"", "a", "1251", "\x00123\x00"}
 
 func TestLDB_PutGet(t *testing.T) {

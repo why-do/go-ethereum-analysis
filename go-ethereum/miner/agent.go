@@ -87,6 +87,7 @@ func (self *CpuAgent) update() {
 out:
 	for {
 		select {
+		// 接收到了挖矿任务
 		case work := <-self.workCh:
 			self.mu.Lock()
 			if self.quitCurrentOp != nil {
