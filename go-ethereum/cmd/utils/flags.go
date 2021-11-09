@@ -773,6 +773,7 @@ func setEtherbase(ctx *cli.Context, ks *keystore.KeyStore, cfg *eth.Config) {
 }
 
 // MakePasswordList reads password lines from the file specified by the global --password flag.
+// 从文件中读取密码
 func MakePasswordList(ctx *cli.Context) []string {
 	path := ctx.GlobalString(PasswordFileFlag.Name)
 	if path == "" {

@@ -27,12 +27,16 @@ import (
 var (
 	// Common encoded values.
 	// These are useful when implementing EncodeRLP.
+	// RLP只编码的两种类型
+	// 字符串，0x80代表字符串编码第一个字节的取值范围由0x80开始
 	EmptyString = []byte{0x80}
+	// 列表，0xC0代表列表编码第一个字节的取值范围由0xC0开始
 	EmptyList   = []byte{0xC0}
 )
 
 // Encoder is implemented by types that require custom
 // encoding rules or want to encode private fields.
+// 编码器接口
 type Encoder interface {
 	// EncodeRLP should write the RLP encoding of its receiver to w.
 	// If the implementation is a pointer method, it may also be
@@ -77,6 +81,7 @@ type Encoder interface {
 //
 // Boolean values are not supported, nor are signed integers, floating
 // point numbers, maps, channels and functions.
+// rlp编码，大部分的EncodeRLP方法都是直接调用该方法
 func Encode(w io.Writer, val interface{}) error {
 	if outer, ok := w.(*encbuf); ok {
 		// Encode was called by some type's EncodeRLP.
@@ -118,10 +123,15 @@ func EncodeToReader(val interface{}) (size int, r io.Reader, err error) {
 	return eb.size(), &encReader{buf: eb}, nil
 }
 
+// 在encode过程中当成一个buffer使用
 type encbuf struct {
+	// 包含所有内容，除了列表头部
 	str     []byte      // string data, contains everything except list headers
+	// 列表的头部记录在lheads中
 	lheads  []*listhead // all list headers
+	// 记录lheads长度
 	lhsize  int         // sum of sizes of all encoded list headers
+	// 辅助buffer，专门用来处理uint编码
 	sizebuf []byte      // 9-byte auxiliary buffer for uint encoding
 }
 
@@ -179,8 +189,11 @@ func (w *encbuf) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// 核心编码函数
 func (w *encbuf) encode(val interface{}) error {
+	// 获取反射类型
 	rval := reflect.ValueOf(val)
+	// 获取对应的编码器
 	ti, err := cachedTypeInfo(rval.Type(), tags{})
 	if err != nil {
 		return err
@@ -228,6 +241,7 @@ func (w *encbuf) size() int {
 	return len(w.str) + w.lhsize
 }
 
+// encbuf处理逻辑，主要是将数据组装成完整的RLP数据
 func (w *encbuf) toBytes() []byte {
 	out := make([]byte, w.size())
 	strpos := 0
@@ -344,6 +358,7 @@ var (
 )
 
 // makeWriter creates a writer function for the given type.
+// 通过给定的类型创建一个编码器函数
 func makeWriter(typ reflect.Type, ts tags) (writer, error) {
 	kind := typ.Kind()
 	switch {
@@ -526,6 +541,7 @@ func makeSliceWriter(typ reflect.Type, ts tags) (writer, error) {
 	return writer, nil
 }
 
+// 处理结构体的方法
 func makeStructWriter(typ reflect.Type) (writer, error) {
 	fields, err := structFields(typ)
 	if err != nil {

@@ -226,6 +226,7 @@ type scopeSub struct {
 // Track starts tracking a subscription. If the scope is closed, Track returns nil. The
 // returned subscription is a wrapper. Unsubscribing the wrapper removes it from the
 // scope.
+// 追踪订阅事件
 func (sc *SubscriptionScope) Track(s Subscription) Subscription {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -235,6 +236,8 @@ func (sc *SubscriptionScope) Track(s Subscription) Subscription {
 	if sc.subs == nil {
 		sc.subs = make(map[*scopeSub]struct{})
 	}
+	// 做了一层wrapper（封装），把所有的subscription接口实例都收集到一个map中
+	// 通过该map可以实现快速取消所有的订阅
 	ss := &scopeSub{sc, s}
 	sc.subs[ss] = struct{}{}
 	return ss

@@ -109,9 +109,11 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 // It's important to note that any errors returned by the interpreter should be
 // considered a revert-and-consume-all-gas operation. No error specific checks
 // should be handled to reduce complexity and errors further down the in.
+// 循环运行并使用给定的输入数据计算合约代码
 func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret []byte, err error) {
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
+	// 执行完后，执行栈深度-1
 	defer func() { in.evm.depth-- }()
 
 	// Reset the previous call's return data. It's unimportant to preserve the old buffer
@@ -155,8 +157,11 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
+	// 解析器处理的主循环
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
 		// Get the memory location of pc
+		// 从合约的二进制数据中获取第pc个opcode
+		// opcode是以太坊中虚拟机的指令，不超过256个
 		op = contract.GetOp(pc)
 
 		if in.cfg.Debug {
@@ -171,6 +176,7 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 
 		// Get the operation from the jump table matching the opcode and validate the
 		// stack and make sure there enough stack items available to perform the operation
+		// 从解析器的JumpTable表中查到op所对应的operation
 		operation := in.cfg.JumpTable[op]
 		if !operation.valid {
 			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
@@ -216,6 +222,7 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 		}
 
 		// execute the operation
+		// 执行EVM指令
 		res, err := operation.execute(&pc, in.evm, contract, mem, stack)
 		// verifyPool is a build flag. Pool verification makes sure the integrity
 		// of the integer pool by comparing values to a default value.
@@ -227,7 +234,7 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 		if operation.returns {
 			in.returnData = res
 		}
-
+		// 判断是否需要跳出主循环，如果不跳出，继续遍历一下个Op
 		switch {
 		case err != nil:
 			return nil, err

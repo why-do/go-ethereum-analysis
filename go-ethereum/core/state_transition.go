@@ -62,6 +62,7 @@ type StateTransition struct {
 }
 
 // Message represents a message sent to a contract.
+// 交易数据
 type Message interface {
 	From() common.Address
 	//FromFrontier() (common.Address, error)
@@ -82,6 +83,7 @@ type Message interface {
 // TODO convert to uint64
 func IntrinsicGas(data []byte, contractCreation, homestead bool) *big.Int {
 	igas := new(big.Int)
+	// 通过判断交易类型来决定初始gas的数量
 	if contractCreation && homestead {
 		igas.SetUint64(params.TxGasContractCreation)
 	} else {
@@ -105,6 +107,7 @@ func IntrinsicGas(data []byte, contractCreation, homestead bool) *big.Int {
 }
 
 // NewStateTransition initialises and returns a new state transition object.
+// 生成新的状态
 func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
 	return &StateTransition{
 		gp:         gp,
@@ -125,9 +128,11 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // the gas used (which includes gas refunds) and an error if it failed. An error always
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
+// 计算新的交易状态，执行交易
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) ([]byte, *big.Int, bool, error) {
+	// 通过EVM和MSG等生成新的交易状态
 	st := NewStateTransition(evm, msg, gp)
-
+	// 核心函数
 	ret, _, gasUsed, failed, err := st.TransitionDb()
 	return ret, gasUsed, failed, err
 }
@@ -209,6 +214,8 @@ func (st *StateTransition) preCheck() error {
 // TransitionDb will transition the state by applying the current message and returning the result
 // including the required gas for the operation as well as the used gas. It returns an error if it
 // failed. An error indicates a consensus issue.
+// 通过应用当前消息转换状态，并且返回结果
+// 包括操作所需的gas，使用过的gas等
 func (st *StateTransition) TransitionDb() (ret []byte, requiredGas, usedGas *big.Int, failed bool, err error) {
 	if err = st.preCheck(); err != nil {
 		return
@@ -217,14 +224,18 @@ func (st *StateTransition) TransitionDb() (ret []byte, requiredGas, usedGas *big
 	sender := st.from() // err checked in preCheck
 
 	homestead := st.evm.ChainConfig().IsHomestead(st.evm.BlockNumber)
+	// 判断此次交易是否是一个创建合约的交易
 	contractCreation := msg.To() == nil
 
 	// Pay intrinsic gas
 	// TODO convert to uint64
+	// 计算gas：通过计算消息大小以及是否是一个合约创建的交易来计算此次交易需要消耗的gas
 	intrinsicGas := IntrinsicGas(st.data, contractCreation, homestead)
+	// 不能超过int64
 	if intrinsicGas.BitLen() > 64 {
 		return nil, nil, nil, false, vm.ErrOutOfGas
 	}
+	// 检查gas数量
 	if err = st.useGas(intrinsicGas.Uint64()); err != nil {
 		return nil, nil, nil, false, err
 	}
@@ -237,10 +248,17 @@ func (st *StateTransition) TransitionDb() (ret []byte, requiredGas, usedGas *big
 		vmerr error
 	)
 	if contractCreation {
+		// 当前交易是一个创建合约的交易
+		// 创建一个合约
 		ret, _, st.gas, vmerr = evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
+		// 更新发送的nonce值，每发一次非合约创建的交易，nonce+1
 		st.state.SetNonce(sender.Address(), st.state.GetNonce(sender.Address())+1)
+		// EVM执行
+		// call与create逻辑上基本相同，有两点区别
+		// 1.call方法调用的是一个存在合约地址的合约
+		// 2.call的transfer转移是在合约的发送方与接收方之间产生的
 		ret, st.gas, vmerr = evm.Call(sender, st.to().Address(), st.data, st.gas, st.value)
 	}
 	if vmerr != nil {
@@ -248,18 +266,22 @@ func (st *StateTransition) TransitionDb() (ret []byte, requiredGas, usedGas *big
 		// The only possible consensus-error would be if there wasn't
 		// sufficient balance to make the transfer happen. The first
 		// balance transfer may never fail.
+		// 资金不足
 		if vmerr == vm.ErrInsufficientBalance {
 			return nil, nil, nil, false, vmerr
 		}
 	}
+	// 计算实际消耗的gas
 	requiredGas = new(big.Int).Set(st.gasUsed())
-
+	// 退回多余的gas
 	st.refundGas()
+	// 奖励矿工
 	st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(st.gasUsed(), st.gasPrice))
 
 	return ret, requiredGas, st.gasUsed(), vmerr != nil, err
 }
 
+// 向sender退还多余的gas
 func (st *StateTransition) refundGas() {
 	// Return eth for remaining gas to the sender account,
 	// exchanged at the original rate.

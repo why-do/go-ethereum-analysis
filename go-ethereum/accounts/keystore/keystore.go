@@ -57,11 +57,13 @@ const walletRefreshCycle = 3 * time.Second
 
 // KeyStore manages a key storage directory on disk.
 type KeyStore struct {
+	// KeyStore接口，用于访问账户管理的私钥
 	storage  keyStore                     // Storage backend, might be cleartext or encrypted
 	cache    *accountCache                // In-memory account cache over the filesystem storage
 	changes  chan struct{}                // Channel receiving change notifications from the cache
 	unlocked map[common.Address]*unlocked // Currently unlocked account (decrypted private keys)
 
+	// 所有钱包的集合
 	wallets     []accounts.Wallet       // Wallet wrappers around the individual key files
 	updateFeed  event.Feed              // Event feed to notify wallet additions/removals
 	updateScope event.SubscriptionScope // Subscription scope tracking current live listeners
@@ -76,6 +78,7 @@ type unlocked struct {
 }
 
 // NewKeyStore creates a keystore for the given directory.
+// 根据指定的目录创建一个keystore
 func NewKeyStore(keydir string, scryptN, scryptP int) *KeyStore {
 	keydir, _ = filepath.Abs(keydir)
 	ks := &KeyStore{storage: &keyStorePassphrase{keydir, scryptN, scryptP}}
@@ -99,6 +102,7 @@ func (ks *KeyStore) init(keydir string) {
 
 	// Initialize the set of unlocked keys and the account cache
 	ks.unlocked = make(map[common.Address]*unlocked)
+	// 创建一个accountCache实例
 	ks.cache, ks.changes = newAccountCache(keydir)
 
 	// TODO: In order for this finalizer to work, there must be no references
@@ -108,15 +112,18 @@ func (ks *KeyStore) init(keydir string) {
 		m.cache.close()
 	})
 	// Create the initial list of wallets from the cache
+	// 获取当前的账号列表
 	accs := ks.cache.accounts()
 	ks.wallets = make([]accounts.Wallet, len(accs))
 	for i := 0; i < len(accs); i++ {
+		// 将keyStore填充到钱包中去
 		ks.wallets[i] = &keystoreWallet{account: accs[i], keystore: ks}
 	}
 }
 
 // Wallets implements accounts.Backend, returning all single-key wallets from the
 // keystore directory.
+// 通过keystore获取wallet列表
 func (ks *KeyStore) Wallets() []accounts.Wallet {
 	// Make sure the list of wallets is in sync with the account cache
 	ks.refreshWallets()
@@ -176,12 +183,14 @@ func (ks *KeyStore) refreshWallets() {
 
 // Subscribe implements accounts.Backend, creating an async subscription to
 // receive notifications on the addition or removal of keystore wallets.
+// 订阅事件函数
 func (ks *KeyStore) Subscribe(sink chan<- accounts.WalletEvent) event.Subscription {
 	// We need the mutex to reliably start/stop the update loop
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
 	// Subscribe the caller and track the subscriber count
+	// 追踪订阅事件
 	sub := ks.updateScope.Track(ks.updateFeed.Subscribe(sink))
 
 	// Subscribers require an active notification loop, start it

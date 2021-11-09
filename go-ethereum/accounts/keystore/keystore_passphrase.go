@@ -92,16 +92,20 @@ func (ks keyStorePassphrase) GetKey(addr common.Address, filename, auth string) 
 }
 
 // StoreKey generates a key, encrypts with 'auth' and stores in the given directory
+// 调用内部函数生成地址
 func StoreKey(dir, auth string, scryptN, scryptP int) (common.Address, error) {
+	// 生成一个新的地址并存储
 	_, a, err := storeNewKey(&keyStorePassphrase{dir, scryptN, scryptP}, crand.Reader, auth)
 	return a.Address, err
 }
 
+// 将私钥信息保存到文件
 func (ks keyStorePassphrase) StoreKey(filename string, key *Key, auth string) error {
 	keyjson, err := EncryptKey(key, auth, ks.scryptN, ks.scryptP)
 	if err != nil {
 		return err
 	}
+	// 写入文件
 	return writeKeyFile(filename, keyjson)
 }
 

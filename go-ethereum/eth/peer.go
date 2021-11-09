@@ -50,6 +50,7 @@ type PeerInfo struct {
 	Head       string   `json:"head"`       // SHA3 hash of the peer's best owned block
 }
 
+// 以太坊节点的结构
 type peer struct {
 	id string
 
@@ -63,6 +64,7 @@ type peer struct {
 	td   *big.Int
 	lock sync.RWMutex
 
+	// 该节点包含的交易列表
 	knownTxs    *set.Set // Set of transaction hashes known to be known by this peer
 	knownBlocks *set.Set // Set of block hashes known to be known by this peer
 }
@@ -132,10 +134,13 @@ func (p *peer) MarkTransaction(hash common.Hash) {
 
 // SendTransactions sends transactions to the peer and includes the hashes
 // in its transaction hash set for future reference.
+// 向peer发送交易
 func (p *peer) SendTransactions(txs types.Transactions) error {
 	for _, tx := range txs {
+		// 把当前交易哈希存入该节点已知的交易列表中
 		p.knownTxs.Add(tx.Hash())
 	}
+	// 发送txMsg
 	return p2p.Send(p.rw, TxMsg, txs)
 }
 
@@ -299,6 +304,7 @@ func (p *peer) String() string {
 
 // peerSet represents the collection of active peers currently participating in
 // the Ethereum sub-protocol.
+// 当前活动节点的集合
 type peerSet struct {
 	peers  map[string]*peer
 	lock   sync.RWMutex
@@ -374,11 +380,13 @@ func (ps *peerSet) PeersWithoutBlock(hash common.Hash) []*peer {
 
 // PeersWithoutTx retrieves a list of peers that do not have a given transaction
 // in their set of known hashes.
+// 通过哈希查找还没有包含该交易的节点
 func (ps *peerSet) PeersWithoutTx(hash common.Hash) []*peer {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
-
+	// 还没有包含指定交易的节点列表
 	list := make([]*peer, 0, len(ps.peers))
+	// 从当前的集合中遍历每一个Peers，判断指定哈希是否包含在每个peers中
 	for _, p := range ps.peers {
 		if !p.knownTxs.Has(hash) {
 			list = append(list, p)

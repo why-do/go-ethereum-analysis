@@ -151,6 +151,7 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase com
 		unconfirmed:    newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
 	}
 	// Subscribe TxPreEvent for tx pool
+	// txPool订阅TxPreEvent，做初始化工作
 	worker.txSub = eth.TxPool().SubscribeTxPreEvent(worker.txCh)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -247,6 +248,7 @@ func (self *worker) unregister(agent Agent) {
 	agent.Stop()
 }
 
+// 更新
 func (self *worker) update() {
 	defer self.txSub.Unsubscribe()
 	defer self.chainHeadSub.Unsubscribe()
@@ -266,9 +268,11 @@ func (self *worker) update() {
 			self.uncleMu.Unlock()
 
 		// Handle TxPreEvent
+		// 处理订阅事件
 		case ev := <-self.txCh:
 			// Apply transaction to the pending state if we're not mining
 			if atomic.LoadInt32(&self.mining) == 0 {
+				// 不挖矿，直接调用commitTransaction给EVM执行
 				self.currentMu.Lock()
 				acc, _ := types.Sender(self.current.signer, ev.Tx)
 				txs := map[common.Address]types.Transactions{acc: {ev.Tx}}

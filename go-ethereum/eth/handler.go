@@ -202,15 +202,18 @@ func (pm *ProtocolManager) removePeer(id string) {
 	}
 }
 
+// 启动指定节点网络层
 func (pm *ProtocolManager) Start(maxPeers int) {
 	pm.maxPeers = maxPeers
 
 	// broadcast transactions
+	// 广播交易
 	pm.txCh = make(chan core.TxPreEvent, txChanSize)
 	pm.txSub = pm.txpool.SubscribeTxPreEvent(pm.txCh)
-	go pm.txBroadcastLoop()
+	go pm.txBroadcastLoop()	// 另起协程，将交易广播给其他节点
 
 	// broadcast mined blocks
+	// 广播区块
 	pm.minedBlockSub = pm.eventMux.Subscribe(core.NewMinedBlockEvent{})
 	go pm.minedBroadcastLoop()
 
@@ -709,10 +712,13 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 
 // BroadcastTx will propagate a transaction to all peers which are not known to
 // already have the given transaction.
+// 广播交易到其他节点，向还没有该交易的节点发送该交易
 func (pm *ProtocolManager) BroadcastTx(hash common.Hash, tx *types.Transaction) {
 	// Broadcast transaction to a batch of peers not knowing about it
+	// 查找还没有包含该交易的节点
 	peers := pm.peers.PeersWithoutTx(hash)
-	//FIXME include this again: peers = peers[:int(math.Sqrt(float64(len(peers))))]
+	// FIXME include this again: peers = peers[:int(math.Sqrt(float64(len(peers))))]
+	// 向每一个没有包含该交易的节点发送交易
 	for _, peer := range peers {
 		peer.SendTransactions(types.Transactions{tx})
 	}
@@ -731,10 +737,12 @@ func (self *ProtocolManager) minedBroadcastLoop() {
 	}
 }
 
+// 广播交易
 func (self *ProtocolManager) txBroadcastLoop() {
 	for {
 		select {
 		case event := <-self.txCh:
+			// 交易广播函数
 			self.BroadcastTx(event.Tx.Hash(), event.Tx)
 
 		// Err() channel will be closed when unsubscribing.

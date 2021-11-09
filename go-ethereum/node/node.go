@@ -72,6 +72,7 @@ type Node struct {
 }
 
 // New creates a new P2P node, ready for protocol registration.
+// 创建一个新的P2P节点
 func New(conf *Config) (*Node, error) {
 	// Copy config and resolve the datadir so future changes to the current
 	// working directory don't affect the node.
@@ -97,6 +98,7 @@ func New(conf *Config) (*Node, error) {
 	}
 	// Ensure that the AccountManager method works before the node has started.
 	// We rely on this in cmd/geth.
+	// 创建一个账号管理器，返回一个manager对象
 	am, ephemeralKeystore, err := makeAccountManager(conf)
 	if err != nil {
 		return nil, err

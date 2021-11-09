@@ -64,7 +64,7 @@ passwordfile as argument containing the wallet password in plaintext.`,
 			},
 		},
 	}
-
+	// 账号管理命令
 	accountCommand = cli.Command{
 		Name:     "account",
 		Usage:    "Manage accounts",
@@ -101,6 +101,7 @@ Make sure you backup your keys regularly.`,
 				Description: `
 Print a short summary of all accounts`,
 			},
+			// 新建账号
 			{
 				Name:   "new",
 				Usage:  "Create a new account",
@@ -290,23 +291,28 @@ func ambiguousAddrRecovery(ks *keystore.KeyStore, err *keystore.AmbiguousAddrErr
 }
 
 // accountCreate creates a new account into the keystore defined by the CLI flags.
+// 创建一个新的账号
 func accountCreate(ctx *cli.Context) error {
+	// 获取geth配置
 	cfg := gethConfig{Node: defaultNodeConfig()}
 	// Load config file.
+	// 加载配置文件
 	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
 	}
+	// 设置节点相关协议配置
 	utils.SetNodeConfig(ctx, &cfg.Node)
+	// 获取账号配置
 	scryptN, scryptP, keydir, err := cfg.Node.AccountConfig()
 
 	if err != nil {
 		utils.Fatalf("Failed to read configuration: %v", err)
 	}
-
+	// 解析用户密码
 	password := getPassPhrase("Your new account is locked with a password. Please give a password. Do not forget this password.", true, 0, utils.MakePasswordList(ctx))
-
+	// 通过密码获取一个新的地址，存储到keystore目录
 	address, err := keystore.StoreKey(keydir, password, scryptN, scryptP)
 
 	if err != nil {

@@ -28,7 +28,9 @@ import (
 )
 
 const (
+	// 哈希长度
 	HashLength    = 32
+	// 以太坊地址长度
 	AddressLength = 20
 )
 
@@ -136,8 +138,10 @@ func (h UnprefixedHash) MarshalText() ([]byte, error) {
 /////////// Address
 
 // Address represents the 20 byte address of an Ethereum account.
+// 以太坊账户地址类型，长度为20个字节
 type Address [AddressLength]byte
 
+// 将byte转换为address
 func BytesToAddress(b []byte) Address {
 	var a Address
 	a.SetBytes(b)

@@ -39,6 +39,7 @@ const (
 	version = 3
 )
 
+// 以太坊key结构，包含了私钥和地址
 type Key struct {
 	Id uuid.UUID // Version 4 "random" for unique id not derived from key data
 	// to simplify lookups we also store the address
@@ -48,6 +49,7 @@ type Key struct {
 	PrivateKey *ecdsa.PrivateKey
 }
 
+// key值存储的操作接口，用于访问账户关联的私钥
 type keyStore interface {
 	// Loads and decrypts the key from disk.
 	GetKey(addr common.Address, filename string, auth string) (*Key, error)
@@ -127,8 +129,9 @@ func (k *Key) UnmarshalJSON(j []byte) (err error) {
 	return nil
 }
 
+// 通过ecdsa公私钥生成key结构
 func newKeyFromECDSA(privateKeyECDSA *ecdsa.PrivateKey) *Key {
-	id := uuid.NewRandom()
+	id := uuid.NewRandom()	// 全局ID
 	key := &Key{
 		Id:         id,
 		Address:    crypto.PubkeyToAddress(privateKeyECDSA.PublicKey),
@@ -158,20 +161,27 @@ func NewKeyForDirectICAP(rand io.Reader) *Key {
 	return key
 }
 
+// 生成新的key结构
 func newKey(rand io.Reader) (*Key, error) {
+	// 通过ecdsa生成一对公私钥
 	privateKeyECDSA, err := ecdsa.GenerateKey(crypto.S256(), rand)
 	if err != nil {
 		return nil, err
 	}
+	// 通过ecdsa公钥生成key结构
 	return newKeyFromECDSA(privateKeyECDSA), nil
 }
 
+// 生成地址，存储
 func storeNewKey(ks keyStore, rand io.Reader, auth string) (*Key, accounts.Account, error) {
+	// 通过给定的随机数，生成新的key结构
 	key, err := newKey(rand)
 	if err != nil {
 		return nil, accounts.Account{}, err
 	}
+	// 封装生成address
 	a := accounts.Account{Address: key.Address, URL: accounts.URL{Scheme: KeyStoreScheme, Path: ks.JoinPath(keyFileName(key.Address))}}
+	// 存储私钥
 	if err := ks.StoreKey(a.URL.Path, key, auth); err != nil {
 		zeroKey(key.PrivateKey)
 		return nil, a, err
@@ -179,6 +189,7 @@ func storeNewKey(ks keyStore, rand io.Reader, auth string) (*Key, accounts.Accou
 	return key, a, err
 }
 
+// 写入文件
 func writeKeyFile(file string, content []byte) error {
 	// Create the keystore directory with appropriate permissions
 	// in case it is not present yet.

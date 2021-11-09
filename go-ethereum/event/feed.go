@@ -70,6 +70,7 @@ func (f *Feed) init() {
 //
 // The channel should have ample buffer space to avoid blocking other subscribers.
 // Slow subscribers are not dropped.
+// 订阅函数，添加channel到feed中，后面消息发送都在channel进行，直到订阅被取消
 func (f *Feed) Subscribe(channel interface{}) Subscription {
 	f.once.Do(f.init)
 
@@ -78,6 +79,7 @@ func (f *Feed) Subscribe(channel interface{}) Subscription {
 	if chantyp.Kind() != reflect.Chan || chantyp.ChanDir()&reflect.SendDir == 0 {
 		panic(errBadChannel)
 	}
+	// 直接将channel封装到feedSub
 	sub := &feedSub{feed: f, channel: chanval, err: make(chan error, 1)}
 
 	f.mu.Lock()
@@ -87,6 +89,8 @@ func (f *Feed) Subscribe(channel interface{}) Subscription {
 	}
 	// Add the select case to the inbox.
 	// The next Send will add it to f.sendCases.
+	// 在inbox列表中添加一个SelectCase实例
+	// 这些实例是在发送事件的时候被使用的
 	cas := reflect.SelectCase{Dir: reflect.SelectSend, Chan: chanval}
 	f.inbox = append(f.inbox, cas)
 	return sub

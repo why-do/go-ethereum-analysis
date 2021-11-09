@@ -18,6 +18,7 @@ package params
 
 import "math/big"
 
+// 相关操作所需要消耗的gas
 const (
 	MaximumExtraDataSize  uint64 = 32    // Maximum size extra data may be after Genesis.
 	ExpByteGas            uint64 = 10    // Times ceil(log256(exponent)) for the EXP instruction.

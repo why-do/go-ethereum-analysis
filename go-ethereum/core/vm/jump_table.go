@@ -32,14 +32,19 @@ type (
 
 var errGasUintOverflow = errors.New("gas uint64 overflow")
 
+// EVM执行时的操作
 type operation struct {
 	// op is the operation function
+	// 表示指令对应的方法
 	execute executionFunc
 	// gasCost is the gas function and returns the gas required for execution
+	// 表示该指令需要消耗的gas
 	gasCost gasFunc
 	// validateStack validates the stack (size) for the operation
+	// 计算是否解析器栈溢出
 	validateStack stackValidationFunc
 	// memorySize returns the memory size required for the operation
+	// 当前operation所占用的内存大小
 	memorySize memorySizeFunc
 
 	halts   bool // indicates whether the operation should halt further execution
@@ -111,6 +116,7 @@ func NewHomesteadInstructionSet() [256]operation {
 
 // NewFrontierInstructionSet returns the frontier instructions
 // that can be executed during the frontier phase.
+// jumpTable的操作初始化，一共256个操作
 func NewFrontierInstructionSet() [256]operation {
 	return [256]operation{
 		STOP: {

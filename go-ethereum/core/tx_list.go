@@ -49,9 +49,14 @@ func (h *nonceHeap) Pop() interface{} {
 
 // txSortedMap is a nonce->transaction hash map with a heap based index to allow
 // iterating over the contents in a nonce-incrementing way.
+// nonce -> transaction排序实现的结构
 type txSortedMap struct {
+	// items中包含所有transaction
+	// uint64的key值代表nonce
 	items map[uint64]*types.Transaction // Hash map storing the transaction data
+	// index代表nonce的索引
 	index *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
+	// 已经完成排序的交易
 	cache types.Transactions            // Cache of the transactions already sorted
 }
 
@@ -219,8 +224,10 @@ func (m *txSortedMap) Flatten() types.Transactions {
 // nonce. The same type can be used both for storing contiguous transactions for
 // the executable/pending queue; and for storing gapped transactions for the non-
 // executable/future queue, with minor behavioral changes.
+// 指定账户下的交易列表，根据account nonce进行排序
 type txList struct {
 	strict bool         // Whether nonces are strictly continuous or not
+	// txSortedMap实现按照nonce进行排序，nonce随着交易次数的增加而增加
 	txs    *txSortedMap // Heap indexed sorted hash map of the transactions
 
 	costcap *big.Int // Price of the highest costing transaction (reset only if exceeds balance)
@@ -386,6 +393,12 @@ func (h *priceHeap) Pop() interface{} {
 
 // txPricedList is a price-sorted heap to allow operating on transactions pool
 // contents in a price-incrementing way.
+// 通过价格进行排序
+// 币龄：以太坊中币龄由gasPrice以及交易的存在时间共同确定
+// 先比较price，将all中的所有交易按照gasPrice从大到小排列
+// 如果遇到gasPrice一样的情况，则比较交易的nonce值，按照
+// nonce从小到大进行排列（交易存在时间越长，nonce值越小）
+// 最终应该取的是gasPrice最大，nonce最小的交易
 type txPricedList struct {
 	all    *map[common.Hash]*types.Transaction // Pointer to the map of all transactions
 	items  *priceHeap                          // Heap of prices of all the stored transactions
