@@ -54,6 +54,7 @@ const (
 type Table struct {
 	mutex   sync.Mutex        // protects buckets, their content, and nursery
 	buckets [nBuckets]*bucket // index of known nodes by distance
+	// 引导节点
 	nursery []*Node           // bootstrap nodes
 	db      *nodeDB           // database of known nodes
 
@@ -91,8 +92,10 @@ type transport interface {
 // that was most recently active is the first element in entries.
 type bucket struct{ entries []*Node }
 
+// 生成table对象实例
 func newTable(t transport, ourID NodeID, ourAddr *net.UDPAddr, nodeDBPath string) (*Table, error) {
 	// If no node database was given, use an in-memory one
+	// 获取数据库实例
 	db, err := newNodeDB(nodeDBPath, Version, ourID)
 	if err != nil {
 		return nil, err
@@ -113,12 +116,14 @@ func newTable(t transport, ourID NodeID, ourAddr *net.UDPAddr, nodeDBPath string
 	for i := range tab.buckets {
 		tab.buckets[i] = new(bucket)
 	}
+	// 刷新，等待请求进入
 	go tab.refreshLoop()
 	return tab, nil
 }
 
 // Self returns the local node.
 // The returned node should not be modified by the caller.
+// 获取本地节点
 func (tab *Table) Self() *Node {
 	return tab.self
 }
@@ -126,6 +131,7 @@ func (tab *Table) Self() *Node {
 // ReadRandomNodes fills the given slice with random nodes from the
 // table. It will not write the same node more than once. The nodes in
 // the slice are copies and can be modified by the caller.
+// 随机读取邻节点
 func (tab *Table) ReadRandomNodes(buf []*Node) (n int) {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
@@ -171,6 +177,7 @@ func randUint(max uint32) uint32 {
 }
 
 // Close terminates the network listener and flushes the node database.
+// 关闭网络
 func (tab *Table) Close() {
 	select {
 	case <-tab.closed:
@@ -183,22 +190,29 @@ func (tab *Table) Close() {
 // SetFallbackNodes sets the initial points of contact. These nodes
 // are used to connect to the network if the table is empty and there
 // are no known nodes in the database.
+// 载入引导节点，如果table为空且没有已知的节点
+// 使用引导节点初始化buckets
 func (tab *Table) SetFallbackNodes(nodes []*Node) error {
+	// 遍历节点列表
 	for _, n := range nodes {
+		// 检查节点n是否是一个完整有效的节点
 		if err := n.validateComplete(); err != nil {
 			return fmt.Errorf("bad bootstrap/fallback node %q (%v)", n, err)
 		}
 	}
 	tab.mutex.Lock()
+	// 分配引导节点
 	tab.nursery = make([]*Node, 0, len(nodes))
 	for _, n := range nodes {
 		cpy := *n
 		// Recompute cpy.sha because the node might not have been
 		// created by NewNode or ParseNode.
 		cpy.sha = crypto.Keccak256Hash(n.ID[:])
+		// 将引导节点追加到引导节点列表中
 		tab.nursery = append(tab.nursery, &cpy)
 	}
 	tab.mutex.Unlock()
+	// 刷新路由表
 	tab.refresh()
 	return nil
 }
@@ -234,6 +248,7 @@ func (tab *Table) Lookup(targetID NodeID) []*Node {
 	return tab.lookup(targetID, true)
 }
 
+// 根据ID查找指定的节点
 func (tab *Table) lookup(targetID NodeID, refreshIfEmpty bool) []*Node {
 	var (
 		target         = crypto.Keccak256Hash(targetID[:])
@@ -250,6 +265,7 @@ func (tab *Table) lookup(targetID NodeID, refreshIfEmpty bool) []*Node {
 	for {
 		tab.mutex.Lock()
 		// generate initial result set
+		// 获取距离target最近的16个节点（kad算法）
 		result = tab.closest(target, bucketSize)
 		tab.mutex.Unlock()
 		if len(result.entries) > 0 || !refreshIfEmpty {
@@ -259,12 +275,14 @@ func (tab *Table) lookup(targetID NodeID, refreshIfEmpty bool) []*Node {
 		// We actually wait for the refresh to complete here. The very
 		// first query will hit this case and run the bootstrapping
 		// logic.
+		// 如果一个节点都没有，刷新
 		<-tab.refresh()
 		refreshIfEmpty = false
 	}
 
 	for {
 		// ask the alpha closest nodes that we haven't asked yet
+		// 用alpha控制每次并发的协程数量，避免量太大，默认为3
 		for i := 0; i < len(result.entries) && pendingQueries < alpha; i++ {
 			n := result.entries[i]
 			if !asked[n.ID] {
@@ -272,6 +290,7 @@ func (tab *Table) lookup(targetID NodeID, refreshIfEmpty bool) []*Node {
 				pendingQueries++
 				go func() {
 					// Find potential neighbors to bond with
+					// 查找可以连通的最近的16个节点
 					r, err := tab.net.findnode(n.ID, n.addr(), targetID)
 					if err != nil {
 						// Bump the failure counter to detect and evacuate non-bonded entries
@@ -288,6 +307,7 @@ func (tab *Table) lookup(targetID NodeID, refreshIfEmpty bool) []*Node {
 				}()
 			}
 		}
+		// 代表有多少个请求去访问，如果没有则直接退出
 		if pendingQueries == 0 {
 			// we have asked all closest nodes, stop the search
 			break
@@ -329,10 +349,12 @@ loop:
 				done = make(chan struct{})
 				go tab.doRefresh(done)
 			}
+		// 接收刷新请求
 		case req := <-tab.refreshReq:
 			waiting = append(waiting, req)
 			if done == nil {
 				done = make(chan struct{})
+				// 执行刷新任务
 				go tab.doRefresh(done)
 			}
 		case <-done:
@@ -362,6 +384,8 @@ loop:
 // doRefresh performs a lookup for a random target to keep buckets
 // full. seed nodes are inserted if the table is empty (initial
 // bootstrap or discarded faulty peers).
+// 执行随机目标的查找以保持bucket是满的
+// 如果表是空的，插入种子节点
 func (tab *Table) doRefresh(done chan struct{}) {
 	defer close(done)
 
@@ -381,6 +405,7 @@ func (tab *Table) doRefresh(done chan struct{}) {
 	// The table is empty. Load nodes from the database and insert
 	// them. This should yield a few previously seen nodes that are
 	// (hopefully) still alive.
+	// 从数据库查找并加载种子节点
 	seeds := tab.db.querySeeds(seedCount, seedMaxAge)
 	seeds = tab.bondall(append(seeds, tab.nursery...))
 
@@ -396,6 +421,7 @@ func (tab *Table) doRefresh(done chan struct{}) {
 	tab.mutex.Unlock()
 
 	// Finally, do a self lookup to fill up the buckets.
+	// 自我查找，填充buckets
 	tab.lookup(tab.self.ID, false)
 }
 
@@ -455,6 +481,7 @@ func (tab *Table) bondall(nodes []*Node) (result []*Node) {
 //
 // If pinged is true, the remote node has just pinged us and one half
 // of the process can be skipped.
+// 确保本地节点与远程节点绑定成功
 func (tab *Table) bond(pinged bool, id NodeID, addr *net.UDPAddr, tcpPort uint16) (*Node, error) {
 	if id == tab.self.ID {
 		return nil, errors.New("is self")
@@ -478,10 +505,12 @@ func (tab *Table) bond(pinged bool, id NodeID, addr *net.UDPAddr, tcpPort uint16
 			<-w.done
 		} else {
 			// Register a new bonding process.
+			// 注册绑定服务
 			w = &bondproc{done: make(chan struct{})}
 			tab.bonding[id] = w
 			tab.bondmu.Unlock()
 			// Do the ping/pong. The result goes into w.
+			// ping-pong机制
 			tab.pingpong(w, pinged, id, addr, tcpPort)
 			// Unregister the process after it's done.
 			tab.bondmu.Lock()
@@ -498,18 +527,21 @@ func (tab *Table) bond(pinged bool, id NodeID, addr *net.UDPAddr, tcpPort uint16
 		// Add the node to the table even if the bonding ping/pong
 		// fails. It will be relaced quickly if it continues to be
 		// unresponsive.
+		// 将节点添加到路由表中
 		tab.add(node)
 		tab.db.updateFindFails(id, 0)
 	}
 	return node, result
 }
 
+// pong表示返回ping请求的结果
 func (tab *Table) pingpong(w *bondproc, pinged bool, id NodeID, addr *net.UDPAddr, tcpPort uint16) {
 	// Request a bonding slot to limit network usage
 	<-tab.bondslots
 	defer func() { tab.bondslots <- struct{}{} }()
 
 	// Ping the remote side and wait for a pong.
+	// 发起一个ping请求等待pong响应
 	if w.err = tab.ping(id, addr); w.err != nil {
 		close(w.done)
 		return
@@ -521,7 +553,9 @@ func (tab *Table) pingpong(w *bondproc, pinged bool, id NodeID, addr *net.UDPAdd
 		tab.net.waitping(id)
 	}
 	// Bonding succeeded, update the node database.
+	// 绑定成功，通过给定的IP和端口生成新的node
 	w.n = NewNode(id, addr.IP, uint16(addr.Port), tcpPort)
+	// 更新table，主要是对数据库进行操作
 	tab.db.updateNode(w.n)
 	close(w.done)
 }
@@ -550,16 +584,21 @@ func (tab *Table) ping(id NodeID, addr *net.UDPAddr) error {
 // the bucket does not respond to a ping packet.
 //
 // The caller must not hold tab.mutex.
+// 添加指定的节点到路由表中，如果buckets中有可用空间，则立即添加
+// 否则判断buckets中最近的活跃节点是否响应ping请求，如果有节点不响应，添加节点
 func (tab *Table) add(new *Node) {
+	// 获取buckets
 	b := tab.buckets[logdist(tab.self.sha, new.sha)]
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 	if b.bump(new) {
 		return
 	}
+	// 获取原有节点
 	var oldest *Node
 	if len(b.entries) == bucketSize {
 		oldest = b.entries[bucketSize-1]
+		// 查看该节点是否被替换
 		if oldest.contested {
 			// The node is already being replaced, don't attempt
 			// to replace it.
@@ -577,6 +616,7 @@ func (tab *Table) add(new *Node) {
 			return
 		}
 	}
+	// 节点替换
 	added := b.replace(new, oldest)
 	if added && tab.nodeAddedHook != nil {
 		tab.nodeAddedHook(new)
@@ -620,6 +660,7 @@ func (tab *Table) delete(node *Node) {
 	}
 }
 
+// 替换节点
 func (b *bucket) replace(n *Node, last *Node) bool {
 	// Don't add if b already contains n.
 	for i := range b.entries {

@@ -352,9 +352,15 @@ func (srv *Server) Stop() {
 
 // Start starts running the server.
 // Servers can not be re-used after stopping.
+// 启动P2P服务
+// Start主要功能：
+// 生成路由表，建立底层网络
+// 生成dialState维护本地peer
+// 监听本地接口，用于应答
 func (srv *Server) Start() (err error) {
 	srv.lock.Lock()
 	defer srv.lock.Unlock()
+	// 判断服务是否已启动
 	if srv.running {
 		return errors.New("server already running")
 	}
@@ -381,11 +387,14 @@ func (srv *Server) Start() (err error) {
 	srv.peerOpDone = make(chan struct{})
 
 	// node table
+	// 没有发现节点路由表
 	if !srv.NoDiscovery {
+		// 监听udp，返回一个新的路由表，其实就是一个服务发现的功能
 		ntab, err := discover.ListenUDP(srv.PrivateKey, srv.ListenAddr, srv.NAT, srv.NodeDatabase, srv.NetRestrict)
 		if err != nil {
 			return err
 		}
+		// 载入引导节点，初始化k-bucket
 		if err := ntab.SetFallbackNodes(srv.BootstrapNodes); err != nil {
 			return err
 		}
@@ -416,6 +425,7 @@ func (srv *Server) Start() (err error) {
 	}
 	// listen/dial
 	if srv.ListenAddr != "" {
+		// 开始监听
 		if err := srv.startListening(); err != nil {
 			return err
 		}
@@ -423,8 +433,9 @@ func (srv *Server) Start() (err error) {
 	if srv.NoDial && srv.ListenAddr == "" {
 		log.Warn("P2P server will be useless, neither dialing nor listening")
 	}
-
+	// 同步，原子操作，run执行后再释放
 	srv.loopWG.Add(1)
+	// 另起协程
 	go srv.run(dialer)
 	srv.running = true
 	return nil
@@ -462,10 +473,14 @@ type dialer interface {
 func (srv *Server) run(dialstate dialer) {
 	defer srv.loopWG.Done()
 	var (
+		// 节点
 		peers        = make(map[discover.NodeID]*Peer)
+		// 可信赖节点
 		trusted      = make(map[discover.NodeID]bool, len(srv.TrustedNodes))
 		taskdone     = make(chan task, maxActiveDialTasks)
+		// 正在执行的任务
 		runningTasks []task
+		// 尚未执行的任务
 		queuedTasks  []task // tasks that can't run yet
 	)
 	// Put trusted nodes into a map to speed up checks.
@@ -476,6 +491,7 @@ func (srv *Server) run(dialstate dialer) {
 	}
 
 	// removes t from runningTasks
+	// 从正在执行的任务队列中删除指定任务
 	delTask := func(t task) {
 		for i := range runningTasks {
 			if runningTasks[i] == t {
@@ -485,32 +501,42 @@ func (srv *Server) run(dialstate dialer) {
 		}
 	}
 	// starts until max number of active tasks is satisfied
+	// 开始执行一批任务
 	startTasks := func(ts []task) (rest []task) {
 		i := 0
+		// 正在运行的任务必须要小于活动连接任务数的最大值（16）
 		for ; len(runningTasks) < maxActiveDialTasks && i < len(ts); i++ {
 			t := ts[i]
 			log.Trace("New dial task", "task", t)
-			go func() { t.Do(srv); taskdone <- t }()
+			go func() {
+				t.Do(srv) // 执行指定任务
+				taskdone <- t
+			}()
 			runningTasks = append(runningTasks, t)
 		}
 		return ts[i:]
 	}
+	// 任务调度
 	scheduleTasks := func() {
 		// Start from queue first.
+		// 从尚未执行的任务列表中提取一批任务出来开始执行
 		queuedTasks = append(queuedTasks[:0], startTasks(queuedTasks)...)
 		// Query dialer for new tasks and start as many as possible now.
 		if len(runningTasks) < maxActiveDialTasks {
+			// 生成一批新的任务加载到待执行的任务队列中去
 			nt := dialstate.newTasks(len(runningTasks)+len(queuedTasks), peers, time.Now())
 			queuedTasks = append(queuedTasks, startTasks(nt)...)
 		}
 	}
 
+// 定义循环，接收不同的channel执行对应逻辑
 running:
 	for {
+		// 开始调度，查找生成任务
 		scheduleTasks()
 
 		select {
-		case <-srv.quit:
+		case <-srv.quit: // 退出
 			// The server was stopped. Run the cleanup logic.
 			break running
 		case n := <-srv.addstatic:
@@ -518,8 +544,10 @@ running:
 			// ephemeral static peer list. Add it to the dialer,
 			// it will keep the node connected.
 			log.Debug("Adding static node", "node", n)
+			// 添加一个节点，该节点最终会生成一个dialTask，在newTasks中加入到队列
 			dialstate.addStatic(n)
 		case n := <-srv.removestatic:
+			// 删除该节点，不再维护
 			// This channel is used by RemovePeer to send a
 			// disconnect request to a peer and begin the
 			// stop keeping the node connected
@@ -529,6 +557,7 @@ running:
 				p.Disconnect(DiscRequested)
 			}
 		case op := <-srv.peerOp:
+			// 读取peer信息
 			// This channel is used by Peers and PeerCount.
 			op(peers)
 			srv.peerOpDone <- struct{}{}
@@ -540,6 +569,7 @@ running:
 			dialstate.taskDone(t, time.Now())
 			delTask(t)
 		case c := <-srv.posthandshake:
+			// 发起握手，做身份验证
 			// A connection has passed the encryption handshake so
 			// the remote identity is known (but hasn't been verified yet).
 			if trusted[c.id] {
@@ -553,8 +583,10 @@ running:
 				break running
 			}
 		case c := <-srv.addpeer:
+			// 加入队列
 			// At this point the connection is past the protocol handshake.
 			// Its capabilities are known and the remote identity is verified.
+			// 检查身份验证是否通过
 			err := srv.protoHandshakeChecks(peers, c)
 			if err == nil {
 				// The handshakes are done and it passed all checks.
@@ -578,6 +610,7 @@ running:
 				break running
 			}
 		case pd := <-srv.delpeer:
+			// 移除peer（如从私链、联盟链中移除节点）
 			// A peer disconnected.
 			d := common.PrettyDuration(mclock.Now() - pd.created)
 			pd.log.Debug("Removing p2p peer", "duration", d, "peers", len(peers)-1, "req", pd.requested, "err", pd.err)
@@ -775,12 +808,14 @@ func (srv *Server) checkpoint(c *conn, stage chan<- *conn) error {
 // runPeer runs in its own goroutine for each peer.
 // it waits until the Peer logic returns and removes
 // the peer.
+// 等待peer逻辑完成
 func (srv *Server) runPeer(p *Peer) {
 	if srv.newPeerHook != nil {
 		srv.newPeerHook(p)
 	}
 
 	// broadcast peer add
+	// 发起节点添加的广播
 	srv.peerFeed.Send(&PeerEvent{
 		Type: PeerEventTypeAdd,
 		Peer: p.ID(),
@@ -790,6 +825,7 @@ func (srv *Server) runPeer(p *Peer) {
 	remoteRequested, err := p.run()
 
 	// broadcast peer drop
+	// 发起节点删除的广播
 	srv.peerFeed.Send(&PeerEvent{
 		Type:  PeerEventTypeDrop,
 		Peer:  p.ID(),

@@ -787,6 +787,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 }
 
 // WriteBlock writes the block to the chain.
+// 区块写入区块链的逻辑
 func (bc *BlockChain) WriteBlockAndState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) (status WriteStatus, err error) {
 	bc.wg.Add(1)
 	defer bc.wg.Done()
@@ -808,6 +809,7 @@ func (bc *BlockChain) WriteBlockAndState(block *types.Block, receipts []*types.R
 		return NonStatTy, err
 	}
 	// Write other block data using a batch.
+	// 哪个对象的NewBatch？
 	batch := bc.chainDb.NewBatch()
 	if err := WriteBlock(batch, block); err != nil {
 		return NonStatTy, err
@@ -909,6 +911,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 		headers[i] = block.Header()
 		seals[i] = true
 	}
+	// 校验每个区块头
 	abort, results := bc.engine.VerifyHeaders(bc, headers, seals)
 	defer close(abort)
 
@@ -929,6 +932,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 
 		err := <-results
 		if err == nil {
+			// 校验每个区块体
 			err = bc.Validator().ValidateBody(block)
 		}
 		if err != nil {
@@ -972,18 +976,21 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 			return i, events, coalescedLogs, err
 		}
 		// Process block using the parent state as reference point.
+		// 执行区块中所有交易
 		receipts, logs, usedGas, err := bc.processor.Process(block, state, bc.vmConfig)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			return i, events, coalescedLogs, err
 		}
 		// Validate the state using the default validator
+		// 验证执行后的收据、日志及账户状态与header中的Bloom、ReceiptHash、Root是否一致
 		err = bc.Validator().ValidateState(block, parent, state, receipts, usedGas)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			return i, events, coalescedLogs, err
 		}
 		// Write the block to the chain and get the status.
+		// 把区块等写入数据库
 		status, err := bc.WriteBlockAndState(block, receipts, state)
 		if err != nil {
 			return i, events, coalescedLogs, err

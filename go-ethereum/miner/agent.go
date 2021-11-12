@@ -110,6 +110,7 @@ out:
 
 // 进行挖矿，共识中最核心的函数之一
 func (self *CpuAgent) mine(work *Work, stop <-chan struct{}) {
+	// 返回成功挖掘出的区块result
 	if result, err := self.engine.Seal(self.chain, work.Block, stop); result != nil {
 		log.Info("Successfully sealed new block", "number", result.Number(), "hash", result.Hash())
 		self.returnCh <- &Result{work, result}

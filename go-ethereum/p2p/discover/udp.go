@@ -58,6 +58,8 @@ const (
 )
 
 // RPC packet types
+// RPC包的类型
+// ping-pong机制
 const (
 	pingPacket = iota + 1 // zero is 'reserved'
 	pongPacket
@@ -145,6 +147,7 @@ func nodeToRPC(n *Node) rpcNode {
 	return rpcNode{ID: n.ID, IP: n.IP, UDP: n.UDP, TCP: n.TCP}
 }
 
+// 数据包接口，处理数据的函数、包名
 type packet interface {
 	handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error
 	name() string
@@ -211,15 +214,19 @@ type reply struct {
 }
 
 // ListenUDP returns a new table that listens for UDP packets on laddr.
+// 监听udp，返回一个新的路由
 func ListenUDP(priv *ecdsa.PrivateKey, laddr string, natm nat.Interface, nodeDBPath string, netrestrict *netutil.Netlist) (*Table, error) {
+	// 返回一个udp端的地址
 	addr, err := net.ResolveUDPAddr("udp", laddr)
 	if err != nil {
 		return nil, err
 	}
+	// 监听udp
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		return nil, err
 	}
+	// 开启后台协程，进行udp监听和服务发现
 	tab, _, err := newUDP(priv, conn, natm, nodeDBPath, netrestrict)
 	if err != nil {
 		return nil, err
@@ -229,6 +236,7 @@ func ListenUDP(priv *ecdsa.PrivateKey, laddr string, natm nat.Interface, nodeDBP
 }
 
 func newUDP(priv *ecdsa.PrivateKey, c conn, natm nat.Interface, nodeDBPath string, netrestrict *netutil.Netlist) (*Table, *udp, error) {
+	// 封装udp对象
 	udp := &udp{
 		conn:        c,
 		priv:        priv,
@@ -237,6 +245,7 @@ func newUDP(priv *ecdsa.PrivateKey, c conn, natm nat.Interface, nodeDBPath strin
 		gotreply:    make(chan reply),
 		addpending:  make(chan *pending),
 	}
+	// 获取udp格式的真实地址
 	realaddr := c.LocalAddr().(*net.UDPAddr)
 	if natm != nil {
 		if !realaddr.IP.IsLoopback() {
@@ -248,7 +257,9 @@ func newUDP(priv *ecdsa.PrivateKey, c conn, natm nat.Interface, nodeDBPath strin
 		}
 	}
 	// TODO: separate TCP port
+	// 把udp地址转成对应的tcp地址
 	udp.ourEndpoint = makeEndpoint(realaddr, uint16(realaddr.Port))
+	// 创建一个路由表，table负责对P2P协议节点发现功能的逻辑
 	tab, err := newTable(udp, PubkeyID(&priv.PublicKey), realaddr, nodeDBPath)
 	if err != nil {
 		return nil, nil, err
@@ -323,9 +334,12 @@ func (t *udp) pending(id NodeID, ptype byte, callback func(interface{}) bool) <-
 	return ch
 }
 
+// 处理一个from发送过来的数据包
 func (t *udp) handleReply(from NodeID, ptype byte, req packet) bool {
 	matched := make(chan bool, 1)
 	select {
+	// 收到一个ptype类型的包（总共4种类型），传入t.gotreply通道
+	// 调用p.callback函数进行处理
 	case t.gotreply <- reply{from, ptype, req, matched}:
 		// loop will handle it
 		return <-matched
@@ -346,7 +360,7 @@ func (t *udp) loop() {
 	)
 	<-timeout.C // ignore first timeout
 	defer timeout.Stop()
-
+	// 重置超时时间
 	resetTimeout := func() {
 		if plist.Front() == nil || nextTimeout == plist.Front().Value {
 			return
@@ -380,6 +394,10 @@ func (t *udp) loop() {
 			return
 
 		case p := <-t.addpending:
+			// 接收到pending之后，存入plist中，如果有reply到达
+			// 触发t.gotreply调用p.callback
+			// 在收到对方发送的数据包之后，就在readloop中不断读取数据包，
+			// 调用对应的类型的handle函数
 			p.deadline = time.Now().Add(respTimeout)
 			plist.PushBack(p)
 
@@ -492,6 +510,7 @@ func encodePacket(priv *ecdsa.PrivateKey, ptype byte, req interface{}) ([]byte, 
 }
 
 // readLoop runs in its own goroutine. it handles incoming UDP packets.
+// 循环读取数据，不断的读取UDP包调用HandlePacket
 func (t *udp) readLoop() {
 	defer t.conn.Close()
 	// Discovery packets are defined to be no larger than 1280 bytes.
@@ -509,16 +528,19 @@ func (t *udp) readLoop() {
 			log.Debug("UDP read error", "err", err)
 			return
 		}
+		// 如果有新的数据包到达，通知到unhandled上面
 		t.handlePacket(from, buf[:nbytes])
 	}
 }
-
+// 处理一个readLoop中读取到的UDP数据包
 func (t *udp) handlePacket(from *net.UDPAddr, buf []byte) error {
+	// 解码
 	packet, fromID, hash, err := decodePacket(buf)
 	if err != nil {
 		log.Debug("Bad discv4 packet", "addr", from, "err", err)
 		return err
 	}
+	// 调用对应的handle处理
 	err = packet.handle(t, from, fromID, hash)
 	log.Trace("<< "+packet.name(), "addr", from, "err", err)
 	return err
@@ -555,6 +577,7 @@ func decodePacket(buf []byte) (packet, NodeID, []byte, error) {
 	return req, fromID, hash, err
 }
 
+// 处理ping请求
 func (req *ping) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error {
 	if expired(req.Expiration) {
 		return errExpired
@@ -566,6 +589,7 @@ func (req *ping) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) er
 	})
 	if !t.handleReply(fromID, pingPacket, req) {
 		// Note: we're ignoring the provided IP address right now
+		// 绑定
 		go t.bond(true, fromID, from, req.From.TCP)
 	}
 	return nil

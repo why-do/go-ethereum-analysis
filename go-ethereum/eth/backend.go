@@ -146,6 +146,7 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 	}
 
 	vmConfig := vm.Config{EnablePreimageRecording: config.EnablePreimageRecording}
+	// 创建全局的区块链
 	eth.blockchain, err = core.NewBlockChain(chainDb, eth.chainConfig, eth.engine, vmConfig)
 	if err != nil {
 		return nil, err

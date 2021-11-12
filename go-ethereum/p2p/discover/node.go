@@ -39,9 +39,13 @@ const NodeIDBits = 512
 
 // Node represents a host on the network.
 // The fields of Node may not be modified.
+// 节点结构
 type Node struct {
+	// IP地址
 	IP       net.IP // len 4 for IPv4 or 16 for IPv6
+	// UDP TCP端口
 	UDP, TCP uint16 // port numbers
+	// 节点ID
 	ID       NodeID // the node's public key
 
 	// This is a cached copy of sha3(ID) which is used for node
@@ -81,7 +85,9 @@ func (n *Node) Incomplete() bool {
 }
 
 // checks whether n is a valid complete node.
+// 检查该节点是否是一个完整有效的节点
 func (n *Node) validateComplete() error {
+	// 检查完整性
 	if n.Incomplete() {
 		return errors.New("incomplete node")
 	}
@@ -94,6 +100,7 @@ func (n *Node) validateComplete() error {
 	if n.IP.IsMulticast() || n.IP.IsUnspecified() {
 		return errors.New("invalid IP (multicast/unspecified)")
 	}
+	// 检查节点ID是否是一个合法的pubKey
 	_, err := n.ID.Pubkey() // validate the key (on curve, etc.)
 	return err
 }
@@ -140,6 +147,7 @@ var incompleteNodeURL = regexp.MustCompile("(?i)^(?:enode://)?([0-9a-f]+)$")
 // and UDP discovery port 30301.
 //
 //    enode://<hex node id>@10.3.58.6:30303?discport=30301
+// 将原始URL解析成node结构
 func ParseNode(rawurl string) (*Node, error) {
 	if m := incompleteNodeURL.FindStringSubmatch(rawurl); m != nil {
 		id, err := HexID(m[1])
@@ -151,6 +159,7 @@ func ParseNode(rawurl string) (*Node, error) {
 	return parseComplete(rawurl)
 }
 
+// 解析URL为节点
 func parseComplete(rawurl string) (*Node, error) {
 	var (
 		id               NodeID

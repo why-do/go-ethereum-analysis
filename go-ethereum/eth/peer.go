@@ -51,6 +51,7 @@ type PeerInfo struct {
 }
 
 // 以太坊节点的结构
+// 封装底层的p2p.peer，集成一些和业务相关的方法
 type peer struct {
 	id string
 
@@ -405,6 +406,7 @@ func (ps *peerSet) BestPeer() *peer {
 		bestTd   *big.Int
 	)
 	for _, p := range ps.peers {
+		// 找Td（Total Difficulty）最大的
 		if _, td := p.Head(); bestPeer == nil || td.Cmp(bestTd) > 0 {
 			bestPeer, bestTd = p, td
 		}

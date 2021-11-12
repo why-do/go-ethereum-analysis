@@ -143,14 +143,14 @@ func (pm *ProtocolManager) syncer() {
 
 	for {
 		select {
-		case <-pm.newPeerCh:
+		case <-pm.newPeerCh: // 有新节点
 			// Make sure we have peers to select from, then sync
 			if pm.peers.Len() < minDesiredPeerCount {
 				break
 			}
-			go pm.synchronise(pm.peers.BestPeer())
+			go pm.synchronise(pm.peers.BestPeer()) // 通过BestPeer()找出要同步的节点
 
-		case <-forceSync.C:
+		case <-forceSync.C:	//定时任务
 			// Force a sync even if not enough peers are present
 			go pm.synchronise(pm.peers.BestPeer())
 
@@ -189,6 +189,7 @@ func (pm *ProtocolManager) synchronise(peer *peer) {
 		mode = downloader.FastSync
 	}
 	// Run the sync cycle, and disable fast sync if we've went past the pivot block
+	//
 	err := pm.downloader.Synchronise(peer.id, pHead, pTd, mode)
 
 	if atomic.LoadUint32(&pm.fastSync) == 1 {

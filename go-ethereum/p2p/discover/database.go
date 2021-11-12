@@ -191,7 +191,9 @@ func (db *nodeDB) node(id NodeID) *Node {
 }
 
 // updateNode inserts - potentially overwriting - a node into the peer database.
+// 更新node数据库
 func (db *nodeDB) updateNode(node *Node) error {
+	// RLP编码
 	blob, err := rlp.EncodeToBytes(node)
 	if err != nil {
 		return err

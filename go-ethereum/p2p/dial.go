@@ -156,6 +156,7 @@ func (s *dialstate) removeStatic(n *discover.Node) {
 	delete(s.static, n.ID)
 }
 
+// 生成一批新的任务队列
 func (s *dialstate) newTasks(nRunning int, peers map[discover.NodeID]*Peer, now time.Time) []task {
 	if s.start == (time.Time{}) {
 		s.start = now
@@ -306,6 +307,7 @@ func (t *dialTask) Do(srv *Server) {
 // Resolve operations are throttled with backoff to avoid flooding the
 // discovery network with useless queries for nodes that don't exist.
 // The backoff delay resets when the node is found.
+// 通过指定ID查找节点
 func (t *dialTask) resolve(srv *Server) bool {
 	if srv.ntab == nil {
 		log.Debug("Can't resolve node", "id", t.dest.ID, "err", "discovery is disabled")
