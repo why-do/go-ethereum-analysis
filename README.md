@@ -267,6 +267,8 @@ func NewBlockChain(chainDb ethdb.Database, config *params.ChainConfig, engine co
 
 8.在以太坊中，会有一个以特定算法生成的大小1GB左右的数据集合，矿工节点在挖矿时需要把这1GB的数据全部加载到内存中去
 
+挖矿代码入口：miner/agent.go -> Start()
+
 
 
 共识

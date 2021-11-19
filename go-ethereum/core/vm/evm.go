@@ -159,7 +159,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	// 转账，与create不同，call转账是合约的发送方与合约的接收方之间产生的
+
+	// 转账，与create不同，call转账是合约的发送方与合约的接收方之间产生的（通过状态数据库转账）
+
+	// 语法：evm.Transfer => evm.Context.Transfer继承struct的方法可直接调用
+	// evm初始化时赋值evm.Context = NewEVMContext，是在此时指定了Transfer实现方法
 	evm.Transfer(evm.StateDB, caller.Address(), to.Address(), value)
 
 	// initialise a new contract and set the code that is to be used by the

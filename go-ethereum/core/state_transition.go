@@ -132,7 +132,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) ([]byte, *big.Int, bool, error) {
 	// 通过EVM和MSG等生成新的交易状态
 	st := NewStateTransition(evm, msg, gp)
-	// 核心函数
+	// 核心函数，执行交易，会改变状态数据库
 	ret, _, gasUsed, failed, err := st.TransitionDb()
 	return ret, gasUsed, failed, err
 }

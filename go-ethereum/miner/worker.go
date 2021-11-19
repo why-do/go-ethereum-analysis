@@ -160,7 +160,7 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, coinbase com
 	go worker.update()
 	// 等待agent挖出新的区块
 	go worker.wait()
-	// 提交
+	// 核心方法，提交
 	worker.commitNewWork()
 
 	return worker
@@ -472,7 +472,7 @@ func (self *worker) commitNewWork() {
 	// 根据gasPrice和随机数Nonce值生成新的交易，交易打包先后顺序的实现
 	// 矿工一般选择gasPrice更高的交易优先执行，对应发送者来说为了让自己的交易更快被处理，可以设置更高的gasPrice
 	txs := types.NewTransactionsByPriceAndNonce(self.current.signer, pending)
-	// 提交，执行交易
+	// 提交，执行交易（先执行交易，再打包区块）
 	work.commitTransactions(self.mux, txs, self.chain, self.coinbase)
 
 	// compute uncles for the new block.
@@ -508,7 +508,7 @@ func (self *worker) commitNewWork() {
 		log.Info("Commit new mining work", "number", work.Block.Number(), "txs", work.tcount, "uncles", len(uncles), "elapsed", common.PrettyDuration(time.Since(tstart)))
 		self.unconfirmed.Shift(work.Block.NumberU64() - 1)
 	}
-	// 发送工作任务给agent，让agent开始挖矿
+	// 发送工作任务给agent，让agent开始挖矿（打包区块 -> 挖矿，是两个阶段）
 	self.push(work)
 }
 

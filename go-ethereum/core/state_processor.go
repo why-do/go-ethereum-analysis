@@ -103,7 +103,8 @@ func ApplyTransaction(config *params.ChainConfig, bc *BlockChain, author *common
 	// 新建一个虚拟机对象，在内部创建一个Interpreter解析器
 	vmenv := vm.NewEVM(context, statedb, config, cfg)
 	// Apply the transaction to the current state (included in the env)
-	// 真正执行交易，返回receipt对象，tx执行过程所消耗的gas
+	// 核心方法：真正执行交易，执行状态、tx执行过程所消耗的gas
+	// 在执行时特定的op会将log存入，在下面创建receipt再取出
 	_, gas, failed, err := ApplyMessage(vmenv, msg, gp)
 	if err != nil {
 		return nil, nil, err
@@ -131,7 +132,7 @@ func ApplyTransaction(config *params.ChainConfig, bc *BlockChain, author *common
 	}
 
 	// Set the receipt logs and create a bloom for filtering
-	// 设置日志和bloom过滤器
+	// 设置日志和bloom过滤器（从状态数据库获取logs）
 	receipt.Logs = statedb.GetLogs(tx.Hash())
 	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 

@@ -105,7 +105,7 @@ func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, stop
 
 // mine is the actual proof-of-work miner that searches for a nonce starting from
 // seed that results in correct final block difficulty.
-// 正在的挖矿函数，不断地搜索nounce，直达找到一个符合条件的值
+// 真正的挖矿函数，不断地搜索nounce，直达找到一个符合条件的值
 func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan struct{}, found chan *types.Block) {
 	// Extract some data from the header
 	// 区块头中的部分

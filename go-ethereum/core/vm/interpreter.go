@@ -223,6 +223,8 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 
 		// execute the operation
 		// 执行EVM指令
+		// 语法：所有operation已初始化，evm.interpreter = NewInterpreter(evm, vmConfig)完成256个operation初始化
+		// execute具体实现代码在vm/core/instructions.go中
 		res, err := operation.execute(&pc, in.evm, contract, mem, stack)
 		// verifyPool is a build flag. Pool verification makes sure the integrity
 		// of the integer pool by comparing values to a default value.
@@ -234,7 +236,7 @@ func (in *Interpreter) Run(snapshot int, contract *Contract, input []byte) (ret 
 		if operation.returns {
 			in.returnData = res
 		}
-		// 判断是否需要跳出主循环，如果不跳出，继续遍历一下个Op
+		// 判断是否需要跳出主循环，如果不跳出，继续遍历一下个op
 		switch {
 		case err != nil:
 			return nil, err
